@@ -5,8 +5,11 @@ edition = "2021"
 
 [dependencies]
 tungstenite = "0.17.2"
+tokio-tungstenite = "0.17.1"
 anyhow = "1.0.57"
 serde_json = "1.0.81"
 serde = { version = "1.0", features = ["derive"] }
 base64 = "0.13.0"
 structopt = "0.3.26"
+tokio = { version = "1", features = ["full"] }
+futures-util = "0.3.21"
