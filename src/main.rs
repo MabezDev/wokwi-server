@@ -24,66 +24,78 @@ fn main() -> Result<()> {
     let opts = Opts::from_args();
     println!("{:?}", opts);
 
-    let server = TcpListener::bind(("127.0.0.1", PORT))?;
-    // TODO can we change the target in this URL
-    println!("Open the following link in the browser\r\n\r\nhttps://wokwi.com/_alpha/wembed/327866241856307794?partner=espressif&port={}&data=demo", PORT);
+    let main_wss = spawn(|| -> Result<()> {
+        let server = TcpListener::bind(("127.0.0.1", PORT))?;
+        // TODO can we change the target in this URL
+        println!("Open the following link in the browser\r\n\r\nhttps://wokwi.com/_alpha/wembed/327866241856307794?partner=espressif&port={}&data=demo", PORT);
 
-    for stream in server.incoming() {
-        spawn(|| {
-            let handler = move || -> Result<()> {
-                let opts = Opts::from_args();
-                let mut websocket = accept(stream?)?;
-                let msg = websocket.read_message()?; // await for hello message
-                println!("Client connected: {:?}", msg);
+        for stream in server.incoming() {
+            spawn(|| {
+                let handler = move || -> Result<()> {
+                    let opts = Opts::from_args();
+                    let mut websocket = accept(stream?)?;
+                    let msg = websocket.read_message()?; // await for hello message
+                    println!("Client connected: {:?}", msg);
 
-                let simdata = SimulationPacket {
-                    r#type: "start".to_owned(),
-                    elf: base64::encode(read_to_end(&opts.files[0])?),
-                    esp_bin: vec![
-                        vec![
-                            Value::Number(0x1000.into()),
-                            Value::String(base64::encode(read_to_end(&opts.files[1])?)),
+                    let simdata = SimulationPacket {
+                        r#type: "start".to_owned(),
+                        elf: base64::encode(read_to_end(&opts.files[0])?),
+                        esp_bin: vec![
+                            vec![
+                                Value::Number(0x1000.into()),
+                                Value::String(base64::encode(read_to_end(&opts.files[1])?)),
+                            ],
+                            vec![
+                                Value::Number(0x8000.into()),
+                                Value::String(base64::encode(read_to_end(&opts.files[2])?)),
+                            ],
+                            vec![
+                                Value::Number(0x10000.into()),
+                                Value::String(base64::encode(read_to_end(&opts.files[3])?)),
+                            ],
                         ],
-                        vec![
-                            Value::Number(0x8000.into()),
-                            Value::String(base64::encode(read_to_end(&opts.files[2])?)),
-                        ],
-                        vec![
-                            Value::Number(0x10000.into()),
-                            Value::String(base64::encode(read_to_end(&opts.files[3])?)),
-                        ],
-                    ],
-                };
+                    };
 
-                // send the simulation data
-                websocket
-                    .write_message(tungstenite::Message::Text(serde_json::to_string(&simdata)?))?;
+                    // send the simulation data
+                    websocket.write_message(tungstenite::Message::Text(serde_json::to_string(
+                        &simdata,
+                    )?))?;
 
-                loop {
-                    let msg = websocket.read_message()?;
+                    loop {
+                        let msg = websocket.read_message()?;
 
-                    if msg.is_text() {
-                        let v: Value = serde_json::from_str(msg.to_text()?)?;
-                        match &v["type"] {
-                            Value::String(s) if s == "uartData" => {
-                                if let Value::Array(bytes) = &v["bytes"] {
-                                    let bytes: Vec<u8> = bytes.iter().map(|v| v.as_u64().unwrap() as u8).collect();
-                                    std::io::stdout().write_all(&bytes)?;
+                        if msg.is_text() {
+                            let v: Value = serde_json::from_str(msg.to_text()?)?;
+                            match &v["type"] {
+                                Value::String(s) if s == "uartData" => {
+                                    if let Value::Array(bytes) = &v["bytes"] {
+                                        let bytes: Vec<u8> = bytes
+                                            .iter()
+                                            .map(|v| v.as_u64().unwrap() as u8)
+                                            .collect();
+                                        std::io::stdout().write_all(&bytes)?;
+                                    }
                                 }
+                                Value::String(s) if s == "gdbResponse" => {
+                                    println!("{:?}", msg);
+                                    todo!();
+                                }
+                                _ => unreachable!(),
                             }
-                            Value::String(s) if s == "gdbResponse" => {
-                                println!("{:?}", msg);
-                                todo!();
-                            }
-                            _ => unreachable!(),
                         }
                     }
-                }
-            };
+                };
 
-            handler().unwrap(); // panic with the thread message
-        });
-    }
+                handler().unwrap(); // panic with the thread message
+            });
+        }
+
+        Ok(())
+    });
+
+    // TODO GDB thread
+
+    main_wss.join().unwrap()?;
 
     Ok(())
 }
