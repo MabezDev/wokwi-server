@@ -1,34 +1,58 @@
+#[macro_use]
+extern crate lazy_static;
 
 use anyhow::Result;
 use bytes::{Buf, BytesMut};
-use esp_wokwi_server::{SimulationPacket, GdbInstruction};
+use esp_wokwi_server::{GdbInstruction, SimulationPacket};
 use futures_util::future::try_join_all;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
+use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::{io::AsyncWriteExt, spawn};
 use tokio_tungstenite::accept_async;
 
-use structopt::StructOpt;
+use espflash::elf::FirmwareImageBuilder;
+use espflash::{Chip, FlashSize, PartitionTable};
 
 const PORT: u16 = 9012;
 const GDB_PORT: u16 = 9333;
 
-#[derive(StructOpt, Debug, Clone)]
-#[structopt(name = "ESP Wokwi server")]
-struct Opts {
-    /// Files to process
-    #[structopt(name = "FILES", parse(from_os_str))]
-    files: Vec<std::path::PathBuf>,
+use clap::Parser;
+
+/// esp wokwi server
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Args {
+    /// target triple
+    #[clap(short, long)]
+    target: String,
+
+    /// path to bootloader
+    #[clap(short, long)]
+    bootloader: Option<PathBuf>,
+
+    /// path to partition table csv
+    #[clap(short, long)]
+    partition_table: Option<PathBuf>,
+
+    elf: PathBuf,
+}
+
+lazy_static! {
+    static ref OPTS: Args = Args::parse();
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let chip = Chip::from_target(&OPTS.target).ok_or_else(|| anyhow::anyhow!("Invalid target"))?;
+
     let (wsend, wrecv) = tokio::sync::mpsc::channel(1);
     let (gsend, grecv) = tokio::sync::mpsc::channel(1);
-    let main_wss = spawn(wokwi_task(gsend, wrecv));
+
+    let main_wss = spawn(wokwi_task(gsend, wrecv, chip));
     let gdb = spawn(gdb_task(wsend, grecv));
 
     try_join_all([main_wss, gdb]).await?;
@@ -36,13 +60,19 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn wokwi_task(mut send: Sender<String>, mut recv: Receiver<GdbInstruction>) -> Result<()> {
+async fn wokwi_task(
+    mut send: Sender<String>,
+    mut recv: Receiver<GdbInstruction>,
+    chip: Chip,
+) -> Result<()> {
     let server = TcpListener::bind(("127.0.0.1", PORT)).await?;
     // TODO can we change the target in this URL?
     println!("Open the following link in the browser\r\n\r\nhttps://wokwi.com/_alpha/wembed/327866241856307794?partner=espressif&port={}&data=demo", PORT);
 
     while let Ok((stream, _)) = server.accept().await {
-        process(stream, (&mut send, &mut recv)).await?; // only one connection at atime
+        if let Err(e) = process(stream, (&mut send, &mut recv), chip).await { // only one connection at a time
+            println!("Woki websocket closed, error: {:?}", e);
+        } 
     }
     Ok(())
 }
@@ -50,28 +80,52 @@ async fn wokwi_task(mut send: Sender<String>, mut recv: Receiver<GdbInstruction>
 async fn process(
     stream: TcpStream,
     (send, recv): (&mut Sender<String>, &mut Receiver<GdbInstruction>),
+    chip: Chip,
 ) -> Result<()> {
-    let opts = Opts::from_args();
     let websocket = accept_async(stream).await?;
     let (mut outgoing, mut incoming) = websocket.split();
     let msg = incoming.next().await; // await for hello message
     println!("Client connected: {:?}", msg);
 
+    let elf = tokio::fs::read(&OPTS.elf).await?;
+    let firmware = FirmwareImageBuilder::new(&elf)
+        .flash_size(Some(FlashSize::Flash4Mb)) // TODO make configurable
+        .build()?;
+
+    let p  = if let Some(p) = &OPTS.partition_table {
+        Some(PartitionTable::try_from_str(String::from_utf8_lossy(&tokio::fs::read(p).await?))?)
+    } else {
+        None
+    };
+
+    let b = if let Some(b) = &OPTS.bootloader {
+        Some(tokio::fs::read(b).await?)
+    } else {
+        None
+    };
+
+    let image = chip.get_flash_image(&firmware, b, p, None, None)?;
+    let parts: Vec<_> = image.flash_segments().collect();
+
+    let bootloader = &parts[0];
+    let partition_table = &parts[1];
+    let app = &parts[2];
+
     let simdata = SimulationPacket {
         r#type: "start".to_owned(),
-        elf: base64::encode(tokio::fs::read(&opts.files[0]).await?),
+        elf: base64::encode(elf.clone()),
         esp_bin: vec![
             vec![
-                Value::Number(0x1000.into()),
-                Value::String(base64::encode(tokio::fs::read(&opts.files[1]).await?)),
+                Value::Number(bootloader.addr.into()),
+                Value::String(base64::encode(&bootloader.data)),
             ],
             vec![
-                Value::Number(0x8000.into()),
-                Value::String(base64::encode(tokio::fs::read(&opts.files[2]).await?)),
+                Value::Number(partition_table.addr.into()),
+                Value::String(base64::encode(&partition_table.data)),
             ],
             vec![
-                Value::Number(0x10000.into()),
-                Value::String(base64::encode(tokio::fs::read(&opts.files[3]).await?)),
+                Value::Number(app.addr.into()),
+                Value::String(base64::encode(&app.data)),
             ],
         ],
     };
@@ -130,7 +184,6 @@ async fn process(
 
 async fn gdb_task(mut send: Sender<GdbInstruction>, mut recv: Receiver<String>) -> Result<()> {
     let server = TcpListener::bind(("127.0.0.1", GDB_PORT)).await?;
-    println!("GDB SERVER LISTENING");
 
     while let Ok((stream, _)) = server.accept().await {
         println!("GDB client connected");
