@@ -67,7 +67,9 @@ async fn wokwi_task(
 ) -> Result<()> {
     let server = TcpListener::bind(("127.0.0.1", PORT)).await?;
     // TODO can we change the target in this URL?
-    println!("Open the following link in the browser\r\n\r\nhttps://wokwi.com/_alpha/wembed/327866241856307794?partner=espressif&port={}&data=demo", PORT);
+    let url = format!("https://wokwi.com/_alpha/wembed/327866241856307794?partner=espressif&port={}&data=demo", PORT);
+    println!("Open the following link in the browser\r\n\r\n{}\r\n\r\n", url);
+    opener::open_browser(url).ok(); // we don't care if this fails
 
     while let Ok((stream, _)) = server.accept().await {
         if let Err(e) = process(stream, (&mut send, &mut recv), chip).await { // only one connection at a time

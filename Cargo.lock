@@ -413,6 +413,7 @@ dependencies = [
  "espflash",
  "futures-util",
  "lazy_static",
+ "opener",
  "serde",
  "serde_json",
  "tokio",
@@ -917,6 +918,16 @@ name = "once_cell"
 version = "1.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87f3e037eac156d1775da914196f0f37741a274155e34a0b7e427c35d2a2ecb9"
+
+[[package]]
+name = "opener"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ea3ebcd72a54701f56345f16785a6d3ac2df7e986d273eb4395c0b01db17952"
+dependencies = [
+ "bstr",
+ "winapi",
+]
 
 [[package]]
 name = "os_str_bytes"

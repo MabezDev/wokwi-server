@@ -16,3 +16,4 @@ futures-util = "0.3.21"
 bytes = "1.1.0"
 lazy_static = "1"
 espflash = { version = "1.5.2-dev", git = "https://github.com/esp-rs/espflash", branch = "feat/open-the-gates" }
+opener = "0.5.0"
