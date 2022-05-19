@@ -9,3 +9,9 @@ pub struct SimulationPacket {
     #[serde(rename = "espBin")]
     pub esp_bin: Vec<Vec<Value>>,
 }
+
+#[derive(Debug)]
+pub enum GdbInstruction {
+    Command(String),
+    Break,
+}
