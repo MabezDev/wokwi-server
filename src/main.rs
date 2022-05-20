@@ -49,6 +49,10 @@ struct Args {
 async fn main() -> Result<()> {
     let opts = Args::parse();
 
+    if opts.chip != Chip::Esp32 && opts.chip != Chip::Esp32c3 && opts.chip != Chip::Esp32s2 {
+        anyhow::bail!("Chip not supported in Wokwi. See available chips and features at https://docs.wokwi.com/guides/esp32#simulation-features");
+    }
+
     let (wsend, wrecv) = tokio::sync::mpsc::channel(1);
     let (gsend, grecv) = tokio::sync::mpsc::channel(1);
 
@@ -74,7 +78,7 @@ async fn wokwi_task(
                 Chip::Esp32 => "331362827438654036".to_string(),
                 Chip::Esp32s2 => "332188085821375060".to_string(),
                 Chip::Esp32c3 => "332188235906155092".to_string(),
-                _ => anyhow::bail!("Chip not supported in Wokwi. Refer to https://docs.wokwi.com/guides/esp32#simulation-features"),
+                _ => unreachable!(),
             }
         }
     };
