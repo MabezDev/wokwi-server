@@ -1,6 +1,5 @@
 use anyhow::Result;
 use bytes::{Buf, BytesMut};
-use wokwi_server::{GdbInstruction, SimulationPacket};
 use futures_util::future::try_join_all;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
@@ -10,6 +9,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::{io::AsyncWriteExt, spawn};
 use tokio_tungstenite::accept_async;
+use wokwi_server::{GdbInstruction, SimulationPacket};
 
 use espflash::elf::FirmwareImageBuilder;
 use espflash::{Chip, FlashSize, PartitionTable};
@@ -23,7 +23,10 @@ use clap::Parser;
 #[derive(Parser, Debug, Clone)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    /// Chip name
+    #[clap(short, long, env = "HOST")]
+    host: Option<String>,
+
+    /// chip name
     #[clap(short, long)]
     chip: Chip,
 
@@ -34,6 +37,10 @@ struct Args {
     /// path to partition table csv
     #[clap(short, long)]
     partition_table: Option<PathBuf>,
+
+    /// wokwi project id
+    #[clap(short, long)]
+    id: Option<String>,
 
     elf: PathBuf,
 }
@@ -60,15 +67,24 @@ async fn wokwi_task(
 ) -> Result<()> {
     let server = TcpListener::bind(("127.0.0.1", PORT)).await?;
 
-    // TODO can we change the target in this URL?
-    let url = format!("https://wokwi.com/_alpha/wembed/327866241856307794?partner=espressif&port={}&data=demo", PORT);
-    println!("Open the following link in the browser\r\n\r\n{}\r\n\r\n", url);
+    let mut url = format!(
+        "https://wokwi.com/_alpha/wembed/{}?partner=espressif&port={}&data=demo",
+        opts.id.clone().unwrap_or("327866241856307794".to_owned()),
+        PORT
+    );
+    opts.host.as_ref().map(|h| url.push_str(&format!("&_host={}",h)));
+
+    println!(
+        "Open the following link in the browser\r\n\r\n{}\r\n\r\n",
+        url
+    );
     opener::open_browser(url).ok(); // we don't care if this fails
 
     while let Ok((stream, _)) = server.accept().await {
-        if let Err(e) = process(opts.clone(), stream, (&mut send, &mut recv)).await { // only one connection at a time
+        if let Err(e) = process(opts.clone(), stream, (&mut send, &mut recv)).await {
+            // only one connection at a time
             println!("Woki websocket closed, error: {:?}", e);
-        } 
+        }
     }
     Ok(())
 }
@@ -88,8 +104,10 @@ async fn process(
         .flash_size(Some(FlashSize::Flash4Mb)) // TODO make configurable
         .build()?;
 
-    let p  = if let Some(p) = &opts.partition_table {
-        Some(PartitionTable::try_from_str(String::from_utf8_lossy(&tokio::fs::read(p).await?))?)
+    let p = if let Some(p) = &opts.partition_table {
+        Some(PartitionTable::try_from_str(String::from_utf8_lossy(
+            &tokio::fs::read(p).await?,
+        ))?)
     } else {
         None
     };
