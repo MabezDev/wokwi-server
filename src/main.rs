@@ -84,7 +84,8 @@ async fn wokwi_task(
         project_id,
         PORT
     );
-    opts.host.as_ref().map(|h| url.push_str(&format!("&_host={}",h)));
+
+    if let Some(h) = opts.host.as_ref() { url.push_str(&format!("&_host={}",h)) }
 
     println!(
         "Open the following link in the browser\r\n\r\n{}\r\n\r\n",
@@ -236,7 +237,7 @@ async fn handle_gdb_client(
         buffer.advance(n);
         let bytes = bytes.get_mut();
 
-        if bytes.len() == 0 {
+        if bytes.is_empty() {
             anyhow::bail!("GDB End of stream");
         }
 
@@ -246,8 +247,8 @@ async fn handle_gdb_client(
             bytes.advance(1);
         }
         let raw_command = String::from_utf8_lossy(bytes);
-        let start = raw_command.find("$").map(|i| i + 1); // we want everything after the $
-        let end = raw_command.find("#");
+        let start = raw_command.find('$').map(|i| i + 1); // we want everything after the $
+        let end = raw_command.find('#');
 
         match (start, end) {
             (Some(start), Some(end)) => {
