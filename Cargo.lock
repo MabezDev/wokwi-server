@@ -405,7 +405,7 @@ checksum = "a357d28ed41a50f9c765dbfe56cbc04a64e53e5fc58ba79fbc34c10ef3df831f"
 [[package]]
 name = "espflash"
 version = "1.5.2-dev"
-source = "git+https://github.com/esp-rs/espflash?branch=bugfix/chip-name-esptool#d9ad0b62eca229e8fcfbbd1297804f7e8c89baa9"
+source = "git+https://github.com/esp-rs/espflash?branch=bugfix/chip-name-esptool#407cab46132beaec60124b7002d4c48300d020dd"
 dependencies = [
  "binread",
  "bytemuck",
@@ -896,9 +896,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.10.0"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87f3e037eac156d1775da914196f0f37741a274155e34a0b7e427c35d2a2ecb9"
+checksum = "7b10983b38c53aebdf33f542c6275b0f58a238129d00c4ae0e6fb59738d783ca"
 
 [[package]]
 name = "opener"
