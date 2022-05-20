@@ -1,6 +1,12 @@
 [package]
-name = "esp-wokwi-server"
+name = "wokwi-server"
 version = "0.1.0"
+authors = ["Scott Mabin <scott@mabez.dev>"]
+categories = ["embedded", "hardware-support", "no-std", "emulator"]
+keywords = ["esp", "wokwi", "runner", "espflash"]
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/mabezdev/wokwi-server"
 edition = "2021"
 
 [dependencies]
@@ -14,6 +20,5 @@ clap = "3.1.18"
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3.21"
 bytes = "1.1.0"
-lazy_static = "1"
-espflash = { version = "1.5.2-dev", git = "https://github.com/esp-rs/espflash", branch = "feat/open-the-gates" }
+espflash = { version = "1.5.2-dev", git = "https://github.com/esp-rs/espflash", branch = "bugfix/chip-name-esptool" }
 opener = "0.5.0"

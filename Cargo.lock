@@ -403,28 +403,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a357d28ed41a50f9c765dbfe56cbc04a64e53e5fc58ba79fbc34c10ef3df831f"
 
 [[package]]
-name = "esp-wokwi-server"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64",
- "bytes",
- "clap",
- "espflash",
- "futures-util",
- "lazy_static",
- "opener",
- "serde",
- "serde_json",
- "tokio",
- "tokio-tungstenite",
- "tungstenite",
-]
-
-[[package]]
 name = "espflash"
 version = "1.5.2-dev"
-source = "git+https://github.com/esp-rs/espflash?branch=feat/open-the-gates#b70991f589b26d48ad798b1fa2de30ec0e503c0b"
+source = "git+https://github.com/esp-rs/espflash?branch=bugfix/chip-name-esptool#d9ad0b62eca229e8fcfbbd1297804f7e8c89baa9"
 dependencies = [
  "binread",
  "bytemuck",
@@ -1758,6 +1739,24 @@ name = "windows_x86_64_msvc"
 version = "0.36.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c811ca4a8c853ef420abd8592ba53ddbbac90410fab6903b3e79972a631f7680"
+
+[[package]]
+name = "wokwi-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "bytes",
+ "clap",
+ "espflash",
+ "futures-util",
+ "opener",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tungstenite",
+]
 
 [[package]]
 name = "xmas-elf"

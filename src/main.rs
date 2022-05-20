@@ -1,9 +1,6 @@
-#[macro_use]
-extern crate lazy_static;
-
 use anyhow::Result;
 use bytes::{Buf, BytesMut};
-use esp_wokwi_server::{GdbInstruction, SimulationPacket};
+use wokwi_server::{GdbInstruction, SimulationPacket};
 use futures_util::future::try_join_all;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
@@ -22,13 +19,13 @@ const GDB_PORT: u16 = 9333;
 
 use clap::Parser;
 
-/// esp wokwi server
-#[derive(Parser, Debug)]
+/// Wokwi server
+#[derive(Parser, Debug, Clone)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    /// target triple
+    /// Chip name
     #[clap(short, long)]
-    target: String,
+    chip: Chip,
 
     /// path to bootloader
     #[clap(short, long)]
@@ -41,18 +38,14 @@ struct Args {
     elf: PathBuf,
 }
 
-lazy_static! {
-    static ref OPTS: Args = Args::parse();
-}
-
 #[tokio::main]
 async fn main() -> Result<()> {
-    let chip = Chip::from_target(&OPTS.target).ok_or_else(|| anyhow::anyhow!("Invalid target"))?;
+    let opts = Args::parse();
 
     let (wsend, wrecv) = tokio::sync::mpsc::channel(1);
     let (gsend, grecv) = tokio::sync::mpsc::channel(1);
 
-    let main_wss = spawn(wokwi_task(gsend, wrecv, chip));
+    let main_wss = spawn(wokwi_task(opts, gsend, wrecv));
     let gdb = spawn(gdb_task(wsend, grecv));
 
     try_join_all([main_wss, gdb]).await?;
@@ -61,18 +54,19 @@ async fn main() -> Result<()> {
 }
 
 async fn wokwi_task(
+    opts: Args,
     mut send: Sender<String>,
     mut recv: Receiver<GdbInstruction>,
-    chip: Chip,
 ) -> Result<()> {
     let server = TcpListener::bind(("127.0.0.1", PORT)).await?;
+
     // TODO can we change the target in this URL?
     let url = format!("https://wokwi.com/_alpha/wembed/327866241856307794?partner=espressif&port={}&data=demo", PORT);
     println!("Open the following link in the browser\r\n\r\n{}\r\n\r\n", url);
     opener::open_browser(url).ok(); // we don't care if this fails
 
     while let Ok((stream, _)) = server.accept().await {
-        if let Err(e) = process(stream, (&mut send, &mut recv), chip).await { // only one connection at a time
+        if let Err(e) = process(opts.clone(), stream, (&mut send, &mut recv)).await { // only one connection at a time
             println!("Woki websocket closed, error: {:?}", e);
         } 
     }
@@ -80,33 +74,33 @@ async fn wokwi_task(
 }
 
 async fn process(
+    opts: Args,
     stream: TcpStream,
     (send, recv): (&mut Sender<String>, &mut Receiver<GdbInstruction>),
-    chip: Chip,
 ) -> Result<()> {
     let websocket = accept_async(stream).await?;
     let (mut outgoing, mut incoming) = websocket.split();
     let msg = incoming.next().await; // await for hello message
     println!("Client connected: {:?}", msg);
 
-    let elf = tokio::fs::read(&OPTS.elf).await?;
+    let elf = tokio::fs::read(&opts.elf).await?;
     let firmware = FirmwareImageBuilder::new(&elf)
         .flash_size(Some(FlashSize::Flash4Mb)) // TODO make configurable
         .build()?;
 
-    let p  = if let Some(p) = &OPTS.partition_table {
+    let p  = if let Some(p) = &opts.partition_table {
         Some(PartitionTable::try_from_str(String::from_utf8_lossy(&tokio::fs::read(p).await?))?)
     } else {
         None
     };
 
-    let b = if let Some(b) = &OPTS.bootloader {
+    let b = if let Some(b) = &opts.bootloader {
         Some(tokio::fs::read(b).await?)
     } else {
         None
     };
 
-    let image = chip.get_flash_image(&firmware, b, p, None, None)?;
+    let image = opts.chip.get_flash_image(&firmware, b, p, None, None)?;
     let parts: Vec<_> = image.flash_segments().collect();
 
     let bootloader = &parts[0];
