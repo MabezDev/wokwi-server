@@ -23,7 +23,7 @@ use clap::Parser;
 #[derive(Parser, Debug, Clone)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    #[clap(short, long, env = "HOST")]
+    #[clap(short, long, env = "WOKWI_HOST")]
     host: Option<String>,
 
     /// chip name
