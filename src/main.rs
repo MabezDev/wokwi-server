@@ -48,6 +48,9 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     let opts = Args::parse();
+    if  !matches!(opts.chip, Chip::Esp32 | Chip::Esp32c3 | Chip::Esp32s2) {
+        anyhow::bail!("Chip not supported in Wokwi. See available chips and features at https://docs.wokwi.com/guides/esp32#simulation-features");
+    }
 
     let (wsend, wrecv) = tokio::sync::mpsc::channel(1);
     let (gsend, grecv) = tokio::sync::mpsc::channel(1);
@@ -67,12 +70,25 @@ async fn wokwi_task(
 ) -> Result<()> {
     let server = TcpListener::bind(("127.0.0.1", PORT)).await?;
 
+    let project_id = match opts.id.clone() {
+        Some(id) => id,
+        None => {
+            match opts.chip {
+                Chip::Esp32 => "331362827438654036".to_string(),
+                Chip::Esp32s2 => "332188085821375060".to_string(),
+                Chip::Esp32c3 => "332188235906155092".to_string(),
+                _ => unreachable!(),
+            }
+        }
+    };
+
     let mut url = format!(
         "https://wokwi.com/_alpha/wembed/{}?partner=espressif&port={}&data=demo",
-        opts.id.clone().unwrap_or("327866241856307794".to_owned()),
+        project_id,
         PORT
     );
-    opts.host.as_ref().map(|h| url.push_str(&format!("&_host={}",h)));
+
+    if let Some(h) = opts.host.as_ref() { url.push_str(&format!("&_host={}",h)) }
 
     println!(
         "Open the following link in the browser\r\n\r\n{}\r\n\r\n",
@@ -224,7 +240,7 @@ async fn handle_gdb_client(
         buffer.advance(n);
         let bytes = bytes.get_mut();
 
-        if bytes.len() == 0 {
+        if bytes.is_empty() {
             anyhow::bail!("GDB End of stream");
         }
 
@@ -234,8 +250,8 @@ async fn handle_gdb_client(
             bytes.advance(1);
         }
         let raw_command = String::from_utf8_lossy(bytes);
-        let start = raw_command.find("$").map(|i| i + 1); // we want everything after the $
-        let end = raw_command.find("#");
+        let start = raw_command.find('$').map(|i| i + 1); // we want everything after the $
+        let end = raw_command.find('#');
 
         match (start, end) {
             (Some(start), Some(end)) => {
