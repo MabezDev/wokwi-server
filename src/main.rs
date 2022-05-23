@@ -48,8 +48,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     let opts = Args::parse();
-
-    if opts.chip != Chip::Esp32 && opts.chip != Chip::Esp32c3 && opts.chip != Chip::Esp32s2 {
+    if matches!(opts.chip, Chip::Esp32s3 | Chip::Esp8266) {
         anyhow::bail!("Chip not supported in Wokwi. See available chips and features at https://docs.wokwi.com/guides/esp32#simulation-features");
     }
 
