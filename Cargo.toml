@@ -1,6 +1,6 @@
 [package]
 name = "wokwi-server"
-version = "0.1.0"
+version = "0.1.0-dev"
 authors = ["Scott Mabin <scott@mabez.dev>"]
 categories = ["embedded", "hardware-support", "no-std", "emulator"]
 keywords = ["esp", "wokwi", "runner", "espflash"]
@@ -20,5 +20,10 @@ clap = { version = "3.1.18", features=["env"] }
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3.21"
 bytes = "1.1.0"
-espflash = { version = "1.5.2-dev", git = "https://github.com/esp-rs/espflash", branch = "bugfix/chip-name-esptool" }
+espflash = { version = "1.5.2-dev", git = "https://github.com/esp-rs/espflash" }
 opener = "0.5.0"
+
+console-subscriber = { version = "0.1.6", optional = true }
+
+[features]
+tokio-console = ["dep:console-subscriber"]

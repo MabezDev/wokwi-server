@@ -1,13 +1,14 @@
 use anyhow::Result;
 use bytes::{Buf, BytesMut};
-use futures_util::future::try_join_all;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
+use tokio::signal;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::{io::AsyncWriteExt, spawn};
+use tokio::task::JoinSet;
 use tokio_tungstenite::accept_async;
 use wokwi_server::{GdbInstruction, SimulationPacket};
 
@@ -46,20 +47,41 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> Result<(), anyhow::Error> {
+    #[cfg(feature = "tokio-console")]
+    console_subscriber::init();
+
     let opts = Args::parse();
-    if  !matches!(opts.chip, Chip::Esp32 | Chip::Esp32c3 | Chip::Esp32s2) {
+    if !matches!(opts.chip, Chip::Esp32 | Chip::Esp32c3 | Chip::Esp32s2) {
         anyhow::bail!("Chip not supported in Wokwi. See available chips and features at https://docs.wokwi.com/guides/esp32#simulation-features");
     }
 
     let (wsend, wrecv) = tokio::sync::mpsc::channel(1);
     let (gsend, grecv) = tokio::sync::mpsc::channel(1);
 
-    let main_wss = spawn(wokwi_task(opts, gsend, wrecv));
-    let gdb = spawn(gdb_task(wsend, grecv));
+    let mut set = JoinSet::new();
+    set.spawn(wokwi_task(opts, gsend, wrecv));
+    set.spawn(gdb_task(wsend, grecv));
 
-    try_join_all([main_wss, gdb]).await?;
-
+    loop {
+        tokio::select! {
+            _ = signal::ctrl_c() => {
+                set.shutdown().await;
+                break;
+            },
+            task = set.join_one() => {
+                match task.map_err(Into::into) {
+                    Ok(Some(Err(e))) | Err(e) => {
+                        println!("Task failed: {:?}", e);
+                        set.shutdown().await;
+                        break;
+                    }
+                    Ok(None) => break, /* All tasks completed */
+                    Ok(Some(Ok(_))) => {}, // graceful shutdown
+                }
+            }
+        }
+    }
     Ok(())
 }
 
@@ -72,23 +94,22 @@ async fn wokwi_task(
 
     let project_id = match opts.id.clone() {
         Some(id) => id,
-        None => {
-            match opts.chip {
-                Chip::Esp32 => "331362827438654036".to_string(),
-                Chip::Esp32s2 => "332188085821375060".to_string(),
-                Chip::Esp32c3 => "332188235906155092".to_string(),
-                _ => unreachable!(),
-            }
-        }
+        None => match opts.chip {
+            Chip::Esp32 => "331362827438654036".to_string(),
+            Chip::Esp32s2 => "332188085821375060".to_string(),
+            Chip::Esp32c3 => "332188235906155092".to_string(),
+            _ => unreachable!(),
+        },
     };
 
     let mut url = format!(
         "https://wokwi.com/_alpha/wembed/{}?partner=espressif&port={}&data=demo",
-        project_id,
-        PORT
+        project_id, PORT
     );
 
-    if let Some(h) = opts.host.as_ref() { url.push_str(&format!("&_host={}",h)) }
+    if let Some(h) = opts.host.as_ref() {
+        url.push_str(&format!("&_host={}", h))
+    }
 
     println!(
         "Open the following link in the browser\r\n\r\n{}\r\n\r\n",
@@ -96,13 +117,10 @@ async fn wokwi_task(
     );
     opener::open_browser(url).ok(); // we don't care if this fails
 
-    while let Ok((stream, _)) = server.accept().await {
-        if let Err(e) = process(opts.clone(), stream, (&mut send, &mut recv)).await {
-            // only one connection at a time
-            println!("Woki websocket closed, error: {:?}", e);
-        }
+    loop {
+        let (stream, _) = server.accept().await?;
+        process(opts.clone(), stream, (&mut send, &mut recv)).await?;
     }
-    Ok(())
 }
 
 async fn process(
@@ -214,15 +232,14 @@ async fn process(
 
 async fn gdb_task(mut send: Sender<GdbInstruction>, mut recv: Receiver<String>) -> Result<()> {
     let server = TcpListener::bind(("127.0.0.1", GDB_PORT)).await?;
-
-    while let Ok((stream, _)) = server.accept().await {
-        println!("GDB client connected");
+    loop {
+        let (stream, _) = server.accept().await?;
+        println!("GDB client connected.");
         match handle_gdb_client(stream, &mut send, &mut recv).await {
             Ok(_) => println!("GDB Session ended cleanly."),
             Err(e) => println!("GDB Session ended with error: {:?}", e),
         }
     }
-    Ok(())
 }
 
 async fn handle_gdb_client(
@@ -234,45 +251,53 @@ async fn handle_gdb_client(
 
     let mut buffer = BytesMut::with_capacity(1024);
     loop {
-        let n = stream.read_buf(&mut buffer).await?; // TODO timeout on disconnect?
+        tokio::select! {
+            r = stream.read_buf(&mut buffer) => {
+                let n = r?;
 
-        let mut bytes = buffer.clone().take(n);
-        buffer.advance(n);
-        let bytes = bytes.get_mut();
+                if n == 0 {
+                    anyhow::bail!("GDB End of stream");
+                }
 
-        if bytes.is_empty() {
-            anyhow::bail!("GDB End of stream");
-        }
+                loop {
+                    let raw_command = String::from_utf8_lossy(buffer.as_ref());
+                    let start = raw_command.find('$').map(|i| i + 1); // we want everything after the $
+                    let end = raw_command.find('#');
 
-        if bytes[0] == 3 {
-            println!("GDB BREAK");
-            send.send(GdbInstruction::Break).await?;
-            bytes.advance(1);
-        }
-        let raw_command = String::from_utf8_lossy(bytes);
-        let start = raw_command.find('$').map(|i| i + 1); // we want everything after the $
-        let end = raw_command.find('#');
-
-        match (start, end) {
-            (Some(start), Some(end)) => {
-                let command = &raw_command[start..end];
-                let checksum = &raw_command[end + 1..];
-                if gdb_checksum(command, checksum).is_err() {
-                    stream.write_all(b"-").await?;
-                    continue;
-                } else {
-                    stream.write_all(b"+").await?;
-                    send.send(GdbInstruction::Command(command.to_owned()))
-                        .await?;
-
-                    let resp = recv
-                        .recv()
-                        .await
-                        .ok_or_else(|| anyhow::anyhow!("Channel closed unexpectedly"))?;
-                    stream.write_all(resp.as_bytes()).await?;
+                    match (start, end) {
+                        (Some(start), Some(end)) => {
+                            let command = &raw_command[start..end];
+                            let end = end + 1; // move past #
+                            let checksum = &raw_command[end..];
+                            // println!("Command: {}, checksum: {}", command, checksum);
+                            let len = if gdb_checksum(command, checksum).is_err() {
+                                stream.write_all(b"-").await?;
+                                end
+                            } else {
+                                stream.write_all(b"+").await?;
+                                send.send(GdbInstruction::Command(command.to_owned()))
+                                    .await?;
+                                end + 2
+                            };
+                            buffer.advance(len);
+                        }
+                        (None, Some(end)) => buffer.advance(end), /* partial command, discard */
+                        (Some(_), None) => break,                 /* incomplete, need more data */
+                        (None, None) => {
+                            if let Some(_index) = buffer.iter().position(|&x| x == 0x03) {
+                                // println!("GDB BREAK detected in packet at index {}", index);
+                                send.send(GdbInstruction::Break).await?;
+                            }
+                            buffer.advance(buffer.remaining()); /* garbage */
+                            break;
+                        }
+                    }
                 }
             }
-            _ => continue,
+            resp = recv.recv() => {
+                let resp = resp.ok_or_else(|| anyhow::anyhow!("Channel closed unexpectedly"))?;
+                stream.write_all(resp.as_bytes()).await?;
+            }
         }
     }
 }
