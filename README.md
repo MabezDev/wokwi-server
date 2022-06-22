@@ -10,7 +10,7 @@ A CLI tool for launching a wokwi instance for your project.
 Download the prebuilt executables for you platform from [the releases pages](https://github.com/MabezDev/wokwi-server/releases). Alternatively, if you have Rust installed you can install it via cargo.
 
 ```rust
-cargo install wokwi-server --git https://github.com/MabezDev/wokwi-server
+RUSTFLAGS="--cfg tokio_unstable" cargo install wokwi-server --git https://github.com/MabezDev/wokwi-server --locked
 ```
 
 ## Usage
