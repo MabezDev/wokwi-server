@@ -95,9 +95,9 @@ async fn wokwi_task(
     let project_id = match opts.id.clone() {
         Some(id) => id,
         None => match opts.chip {
-            Chip::Esp32 => "331362827438654036".to_string(),
-            Chip::Esp32s2 => "332188085821375060".to_string(),
-            Chip::Esp32c3 => "332188235906155092".to_string(),
+            Chip::Esp32 => "338154815612781140".to_string(),
+            Chip::Esp32s2 => "338154940543271506".to_string(),
+            Chip::Esp32c3 => "338322025101656660".to_string(),
             _ => unreachable!(),
         },
     };
