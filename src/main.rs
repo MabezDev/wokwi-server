@@ -52,7 +52,10 @@ async fn main() -> Result<(), anyhow::Error> {
     console_subscriber::init();
 
     let opts = Args::parse();
-    if !matches!(opts.chip, Chip::Esp32 | Chip::Esp32c3 | Chip::Esp32s2) {
+    if !matches!(
+        opts.chip,
+        Chip::Esp32 | Chip::Esp32c3 | Chip::Esp32s2 | Chip::Esp32s3
+    ) {
         anyhow::bail!("Chip not supported in Wokwi. See available chips and features at https://docs.wokwi.com/guides/esp32#simulation-features");
     }
 
@@ -98,6 +101,7 @@ async fn wokwi_task(
             Chip::Esp32 => "338154815612781140".to_string(),
             Chip::Esp32s2 => "338154940543271506".to_string(),
             Chip::Esp32c3 => "338322025101656660".to_string(),
+            Chip::Esp32s3 => "345144250522927698".to_string(),
             _ => unreachable!(),
         },
     };
