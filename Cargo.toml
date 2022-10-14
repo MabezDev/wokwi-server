@@ -20,7 +20,8 @@ clap = { version = "3.1.18", features=["env"] }
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3.21"
 bytes = "1.1.0"
-espflash = "1.6"
+espflash = "1.7"
+xmas-elf = "0.8.0"
 opener = "0.5.0"
 
 console-subscriber = { version = "0.1.6", optional = true }
