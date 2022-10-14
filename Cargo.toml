@@ -1,6 +1,6 @@
 [package]
 name = "wokwi-server"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Scott Mabin <scott@mabez.dev>"]
 categories = ["embedded", "hardware-support", "no-std", "emulator"]
 keywords = ["esp", "wokwi", "runner", "espflash"]
