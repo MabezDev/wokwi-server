@@ -1,8 +1,9 @@
 [package]
 name = "wokwi-server"
+description = "A tool for running embedded applications in Wokwi online simulator"
 version = "0.2.0"
 authors = ["Scott Mabin <scott@mabez.dev>"]
-categories = ["embedded", "hardware-support", "no-std", "emulator"]
+categories = ["embedded", "hardware-support", "no-std"]
 keywords = ["esp", "wokwi", "runner", "espflash"]
 license = "MIT OR Apache-2.0"
 readme = "README.md"
