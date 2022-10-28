@@ -1,5 +1,6 @@
 use anyhow::Result;
 use bytes::{Buf, BytesMut};
+use espflash::elf::ElfFirmwareImage;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -12,8 +13,7 @@ use tokio::task::JoinSet;
 use tokio_tungstenite::accept_async;
 use wokwi_server::{GdbInstruction, SimulationPacket};
 
-use espflash::elf::FirmwareImageBuilder;
-use espflash::{Chip, FlashSize, PartitionTable};
+use espflash::{Chip, PartitionTable};
 
 const PORT: u16 = 9012;
 const GDB_PORT: u16 = 9333;
@@ -72,15 +72,15 @@ async fn main() -> Result<(), anyhow::Error> {
                 set.shutdown().await;
                 break;
             },
-            task = set.join_one() => {
-                match task.map_err(Into::into) {
-                    Ok(Some(Err(e))) | Err(e) => {
+            task = set.join_next() => {
+                match task {
+                    Some(Err(e)) => {
                         println!("Task failed: {:?}", e);
                         set.shutdown().await;
                         break;
                     }
-                    Ok(None) => break, /* All tasks completed */
-                    Ok(Some(Ok(_))) => {}, // graceful shutdown
+                    Some(Ok(_)) => {} /* Task gracefully shutdown */
+                    None => break, /* All tasks completed */
                 }
             }
         }
@@ -137,10 +137,9 @@ async fn process(
     let msg = incoming.next().await; // await for hello message
     println!("Client connected: {:?}", msg);
 
-    let elf = tokio::fs::read(&opts.elf).await?;
-    let firmware = FirmwareImageBuilder::new(&elf)
-        .flash_size(Some(FlashSize::Flash4Mb)) // TODO make configurable
-        .build()?;
+    let bytes = tokio::fs::read(&opts.elf).await?;
+    let elf = xmas_elf::ElfFile::new(&bytes).expect("Invalid elf file");
+    let firmware = ElfFirmwareImage::new(elf);
 
     let p = if let Some(p) = &opts.partition_table {
         Some(PartitionTable::try_from_str(String::from_utf8_lossy(
@@ -156,7 +155,8 @@ async fn process(
         None
     };
 
-    let image = opts.chip.get_flash_image(&firmware, b, p, None, None)?;
+    // TODO allow setting flash params, or take from bootloader?
+    let image = opts.chip.get_flash_image(&firmware, b, p, None, None, None, None, None)?;
     let parts: Vec<_> = image.flash_segments().collect();
 
     let bootloader = &parts[0];
@@ -165,7 +165,7 @@ async fn process(
 
     let simdata = SimulationPacket {
         r#type: "start".to_owned(),
-        elf: base64::encode(elf.clone()),
+        elf: base64::encode(&bytes),
         esp_bin: vec![
             vec![
                 Value::Number(bootloader.addr.into()),
