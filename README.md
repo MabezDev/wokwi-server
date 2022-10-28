@@ -17,9 +17,9 @@ cargo install wokwi-server --git https://github.com/MabezDev/wokwi-server --lock
 
 Only two arguments are required, the target, specified with `--target` and the path to your application elf file. Example running the esp-idf blink example on Wokwi:
 
-```
-$ idf.py build # build the application
-$ wokwi-server --chip esp32 build/blink.elf # running example opened in the browser!
+```sh
+idf.py build # build the application
+wokwi-server --chip esp32 build/blink.elf # running example opened in the browser!
 ```
 
 ### As a cargo runner
