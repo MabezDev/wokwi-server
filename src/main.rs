@@ -1,3 +1,4 @@
+use anyhow::Context;
 use anyhow::Result;
 use bytes::{Buf, BytesMut};
 use espflash::elf::ElfFirmwareImage;
@@ -74,8 +75,13 @@ async fn main() -> Result<(), anyhow::Error> {
             },
             task = set.join_next() => {
                 match task {
-                    Some(Err(e)) => {
-                        println!("Task failed: {:?}", e);
+                    Some(Err(join_error)) => {
+                        println!("Task failed: {:?}", join_error);
+                        set.shutdown().await;
+                        break;
+                    }
+                    Some(Ok(Err(task_error))) => {
+                        println!("Task failed: {:?}", task_error);
                         set.shutdown().await;
                         break;
                     }
@@ -93,7 +99,9 @@ async fn wokwi_task(
     mut send: Sender<String>,
     mut recv: Receiver<GdbInstruction>,
 ) -> Result<()> {
-    let server = TcpListener::bind(("127.0.0.1", PORT)).await?;
+    let server = TcpListener::bind(("127.0.0.1", PORT))
+        .await
+        .with_context(|| format!("Failed to listen on 127.0.0.1:{}", PORT))?;
 
     let project_id = match opts.id.clone() {
         Some(id) => id,
@@ -156,7 +164,9 @@ async fn process(
     };
 
     // TODO allow setting flash params, or take from bootloader?
-    let image = opts.chip.get_flash_image(&firmware, b, p, None, None, None, None, None)?;
+    let image = opts
+        .chip
+        .get_flash_image(&firmware, b, p, None, None, None, None, None)?;
     let parts: Vec<_> = image.flash_segments().collect();
 
     let bootloader = &parts[0];
