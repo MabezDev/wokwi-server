@@ -22,6 +22,16 @@ idf.py build # build the application
 wokwi-server --chip esp32 build/blink.elf # running example opened in the browser!
 ```
 
+### Simulating your binary on a custom Wokwi project
+
+You can use the ID of a Wokwi project to simulate your resulting binary on it:
+```sh
+wokwi-server --chip <chip> --id <projectId> build/blink.elf
+```
+
+The ID of a Wokwi project can be found in the URL. E.g., the ID of
+[ESP32 Rust Blinky](https://wokwi.com/projects/345932416223806035) is `345932416223806035`.
+
 ### As a cargo runner
 
 Inside `.cargo/config.toml`, add a `runner` section to your `target` key ([cargo reference](https://doc.rust-lang.org/cargo/reference/config.html)). Example for the esp32:
