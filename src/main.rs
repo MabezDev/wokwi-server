@@ -1,6 +1,7 @@
 use anyhow::Context;
 use anyhow::Result;
 use bytes::{Buf, BytesMut};
+use esp_idf_part::PartitionTable;
 use espflash::elf::ElfFirmwareImage;
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
@@ -14,7 +15,7 @@ use tokio::task::JoinSet;
 use tokio_tungstenite::accept_async;
 use wokwi_server::{GdbInstruction, SimulationPacket};
 
-use espflash::{Chip, PartitionTable};
+use espflash::targets::Chip;
 
 const PORT: u16 = 9012;
 const GDB_PORT: u16 = 9333;
@@ -166,6 +167,7 @@ async fn process(
     // TODO allow setting flash params, or take from bootloader?
     let image = opts
         .chip
+        .into_target()
         .get_flash_image(&firmware, b, p, None, None, None, None, None)?;
     let parts: Vec<_> = image.flash_segments().collect();
 
