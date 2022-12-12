@@ -60,6 +60,22 @@ async fn main() -> Result<(), anyhow::Error> {
         anyhow::bail!("Chip not supported in Wokwi. See available chips and features at https://docs.wokwi.com/guides/esp32#simulation-features");
     }
 
+    if !opts.elf.exists() {
+        anyhow::bail!("Path to elf does not exist");
+    }
+
+    if let Some(bt) = &opts.bootloader {
+        if !bt.exists() {
+            anyhow::bail!("Path to bootloader does not exist");
+        } 
+    }
+
+    if let Some(pt) = &opts.partition_table {
+        if !pt.exists() {
+            anyhow::bail!("Path to partition table does not exist");
+        } 
+    }
+
     let (wsend, wrecv) = tokio::sync::mpsc::channel(1);
     let (gsend, grecv) = tokio::sync::mpsc::channel(1);
 
