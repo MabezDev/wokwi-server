@@ -15,7 +15,7 @@ cargo install wokwi-server --git https://github.com/MabezDev/wokwi-server --lock
 
 ## Usage
 
-Only two arguments are required, the target, specified with `--target` and the path to your application elf file. Example running the esp-idf blink example on Wokwi:
+Only two arguments are required, the target, specified with `--chip` and the path to your application elf file. Example running the esp-idf blink example on Wokwi:
 
 ```sh
 idf.py build # build the application
