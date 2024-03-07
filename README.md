@@ -62,3 +62,11 @@ Wokwi exposes a GDB stub which this tool exposes via a TCP connection, see the f
     "valuesFormatting": "parseText"
 }
 ```
+
+## Troubleshooting
+
+If Wokwi doesn't progress past "Connecting to ws://localhost:9012..." in the browser:
+
+- It is likely that your browser is blocking mixed content (Safari and Orion both do this)
+- You may override your default browser using the `$BROWSER` environment variable.
+  - If using `wokwi-server` as a cargo runner, set this in `.cargo/config.toml`
